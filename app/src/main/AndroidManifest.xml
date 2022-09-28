@@ -21,6 +21,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.StoragePermissions"
         tools:targetApi="33"
+        android:name=".StoragePermissionsApplication"
         android:requestLegacyExternalStorage="true">
         <activity
             android:name=".MainActivity"
