@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Android
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -28,6 +29,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
@@ -36,12 +39,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.samples.storage.storagepermissions.MainViewModel.Companion.ANDROID_VERSION
 import com.samples.storage.storagepermissions.MainViewModel.Companion.API_VERSION
-import com.samples.storage.storagepermissions.MainViewModel.Companion.STORAGE_PERMISSIONS
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val state = viewModel.uiState
+    val hasReadExternalStorageBeenGranted: Boolean? by viewModel.hasReadExternalStorageBeenGranted.collectAsState(initial = false)
+
     val requestPermissions = rememberLauncherForActivityResult(
         RequestMultiplePermissions(),
         viewModel::onPermissionRequest
@@ -68,7 +72,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 )
             } else {
                 ExtendedFloatingActionButton(
-                    onClick = { requestPermissions.launch(STORAGE_PERMISSIONS) },
+                    onClick = { requestPermissions.launch(state.permissions) },
                     icon = { Icon(Icons.Filled.Lock, null) },
                     text = { Text(text = "Request permissions") },
                 )
@@ -84,19 +88,31 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             )
             Divider()
             ListItem(
-                headlineText = { Text("SDK API Version") },
+                headlineText = { Text("Device SDK API Version") },
                 leadingContent = { Icon(Icons.Filled.Settings, contentDescription = null) },
                 trailingContent = { Text(API_VERSION.toString()) }
             )
             Divider()
             ListItem(
-                headlineText = { Text("Storage Permissions") },
+                headlineText = { Text("Target SDK API Version") },
+                leadingContent = { Icon(Icons.Filled.Settings, contentDescription = null) },
+                trailingContent = { Text(state.targetSdk.toString()) }
+            )
+            Divider()
+            ListItem(
+                headlineText = { Text("Has READ_EXTERNAL_STORAGE been granted before?") },
+                leadingContent = { Icon(Icons.Filled.History, contentDescription = null) },
+                trailingContent = { Text(hasReadExternalStorageBeenGranted?.toString() ?: "No record") }
+            )
+            Divider()
+            ListItem(
+                headlineText = { Text("Required Storage Permissions") },
                 leadingContent = { Icon(Icons.Filled.Lock, contentDescription = null) },
                 trailingContent = { Text(if (state.hasStorageAccess) "Granted" else "Not granted") }
             )
             Text(
                 modifier = Modifier.padding(horizontal = 16.dp),
-                text = STORAGE_PERMISSIONS.joinToString("\n"),
+                text = state.permissions.joinToString("\n"),
                 fontFamily = FontFamily.Monospace,
                 style = MaterialTheme.typography.bodyMedium
             )

@@ -25,9 +25,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.samples.storage.storagepermissions.Settings.HAS_READ_EXTERNAL_STORAGE_BEEN_GRANTED
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -35,15 +39,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         val ANDROID_VERSION = Build.VERSION.RELEASE
         val API_VERSION = Build.VERSION.SDK_INT
-
-        // Read & write permissions to access to shared storage across Android versions
-        val STORAGE_PERMISSIONS = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            arrayOf(READ_MEDIA_IMAGES, READ_MEDIA_VIDEO)
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            arrayOf(READ_EXTERNAL_STORAGE)
-        } else {
-            arrayOf(READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE)
-        }
     }
 
     private val context: Context
@@ -66,7 +61,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    val hasReadExternalStorageBeenGranted: Flow<Boolean?> = context.dataStore.data.map { settings ->
+        settings[HAS_READ_EXTERNAL_STORAGE_BEEN_GRANTED]
+    }
+
     data class UiState(
+        val targetSdk: Int,
+        val permissions: Array<String>,
         val hasStorageAccess: Boolean,
         val queryStatus: QueryStatus,
         val items: List<MediaFile>
@@ -77,20 +78,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun init(): UiState {
         return UiState(
+            targetSdk = context.applicationInfo.targetSdkVersion,
+            permissions = getStoragePermissions(),
             hasStorageAccess = hasStorageAccess(),
             queryStatus = QueryStatus.NOT_STARTED,
             items = emptyList()
         )
     }
 
+    private fun getStoragePermissions(): Array<String> {
+        val permissions = if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            context.applicationInfo.targetSdkVersion >= Build.VERSION_CODES.TIRAMISU
+        ) {
+            arrayOf(READ_MEDIA_IMAGES, READ_MEDIA_VIDEO)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            arrayOf(READ_EXTERNAL_STORAGE)
+        } else {
+            arrayOf(READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE)
+        }
+
+        return permissions
+    }
+
     private fun hasStorageAccess(): Boolean {
-        return STORAGE_PERMISSIONS.all {
+        return getStoragePermissions().all {
             ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
         }
     }
 
     fun onPermissionRequest(grants: Map<String, Boolean>) {
-        uiState = uiState.copy(hasStorageAccess = hasStorageAccess())
+        viewModelScope.launch {
+            // Store READ_EXTERNAL_STORAGE has even been granted
+            if (grants.containsKey(READ_EXTERNAL_STORAGE)) {
+                context.dataStore.edit { settings ->
+                    settings[HAS_READ_EXTERNAL_STORAGE_BEEN_GRANTED] =
+                        grants[READ_EXTERNAL_STORAGE]!!
+                }
+            }
+
+            uiState = uiState.copy(hasStorageAccess = hasStorageAccess())
+        }
     }
 
     fun refreshLibrary() {
@@ -128,7 +156,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 MEDIA_TYPE_IMAGE.toString(),
                 MEDIA_TYPE_VIDEO.toString()
             ),
-            "$DATE_ADDED DESC LIMIT 500" // Hard coded limit of 500 items
+            "$DATE_ADDED DESC" // Hard coded limit of 500 items
         ) ?: throw Exception("Query could not be executed")
 
         cursor.use {
